@@ -1,0 +1,143 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel WaveKernel
+#pragma kernel WaveToMultiWaveKernel
+#pragma kernel WaveToRippleKernel
+#pragma kernel WaveToSphereKernel
+#pragma kernel WaveToTorusKernel
+
+#pragma kernel MultiWaveToWaveKernel
+#pragma kernel MultiWaveKernel
+#pragma kernel MultiWaveToRippleKernel
+#pragma kernel MultiWaveToSphereKernel
+#pragma kernel MultiWaveToTorusKernel
+
+#pragma kernel RippleToWaveKernel
+#pragma kernel RippleToMultiWaveKernel
+#pragma kernel RippleKernel
+#pragma kernel RippleToSphereKernel
+#pragma kernel RippleToTorusKernel
+
+#pragma kernel SphereToWaveKernel
+#pragma kernel SphereToMultiWaveKernel
+#pragma kernel SphereToRippleKernel
+#pragma kernel SphereKernel
+#pragma kernel SphereToTorusKernel
+
+#pragma kernel TorusToWaveKernel
+#pragma kernel TorusToMultiWaveKernel
+#pragma kernel TorusToRippleKernel
+#pragma kernel TorusToSphereKernel
+#pragma kernel TorusKernel
+
+#define PI 3.14159265358979323846
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWStructuredBuffer<float3> _Positions;
+
+float _Step;
+
+float _Time;
+
+float _ShiftingProgress;
+
+uint _Resolution;
+
+float2 getUV(uint3 id) {
+    return (id.xy + 0.5) * _Step - 1.0;
+}
+
+void setPos(uint3 id, float3 pos) {
+    if (id.x < _Resolution && id.y < _Resolution) {
+        _Positions[id.x + id.y * _Resolution] = pos;
+    }
+}
+
+float3 Wave(float u, float v, float t) {
+    float y = sin(PI * (u + v + t));
+    return float3(u, y, v);
+}
+
+float3 MultiWave(float u, float v, float t) {
+    float y = sin(PI * (u + 0.5 * t));
+    y += 0.5 * sin(2 * PI * (v + t));
+    y += sin(PI * (u + v * 0.25 * t));
+    return float3(u, y, v);
+}
+
+float3 Ripple(float u, float v, float t) {
+    float d = sqrt(pow(u, 2) + pow(v, 2));
+    float y = sin((4 * d - t) * PI);
+    return float3(u, y, v);
+}
+
+float3 Sphere(float u, float v, float t) {
+    float r = 0.9 + 0.1 * sin(PI * (12 * u + 8 * v + t));
+    float s = r * cos(0.5 * PI * v);
+
+    float x = s * sin(PI * u);
+    float y = r * sin(0.5 * PI * v);
+    float z = s * cos(PI * u);
+
+    return float3(x, y, z);
+}
+
+float3 Torus(float u, float v, float t) {
+    float r1 = 0.7 + 0.1 * sin(PI * (8 * u + 0.5 * t));
+    float outter = 0.15 + 0.05 * sin(PI * (16 * u + 8 * v + 3 * t));
+    float s = r1 + outter * cos(PI * v);
+
+    float x = s * sin(PI * u);
+    float y = outter * sin(PI * v);
+    float z = s * cos(PI * u);
+
+    return float3(x, y, z);
+}
+
+#define KERNEL_FUNC(func) \
+[numthreads(8,8,1)] \
+void func##Kernel (uint3 id : SV_DispatchThreadID) { \
+    float2 uv = getUV(id); \
+    setPos(id, func(uv.x, uv.y, _Time)); \
+}
+
+#define KERNEL_MORPH_FUNC(funcA, funcB) \
+[numthreads(8,8,1)] \
+void funcA##To##funcB##Kernel (uint3 id : SV_DISPATCHTHREADID) { \
+    float2 uv = getUV(id); \
+    float3 pos = lerp(funcA(uv.x, uv.y, _Time), funcB(uv.x, uv.y, _Time), _ShiftingProgress); \
+    setPos(id, pos); \
+}
+
+// Simple funcs
+KERNEL_FUNC(Wave)
+KERNEL_FUNC(MultiWave)
+KERNEL_FUNC(Ripple)
+KERNEL_FUNC(Sphere)
+KERNEL_FUNC(Torus)
+
+// Morpging funcs
+KERNEL_MORPH_FUNC(Wave, MultiWave)
+KERNEL_MORPH_FUNC(Wave, Ripple)
+KERNEL_MORPH_FUNC(Wave, Sphere)
+KERNEL_MORPH_FUNC(Wave, Torus)
+
+KERNEL_MORPH_FUNC(MultiWave, Wave)
+KERNEL_MORPH_FUNC(MultiWave, Ripple)
+KERNEL_MORPH_FUNC(MultiWave, Sphere)
+KERNEL_MORPH_FUNC(MultiWave, Torus)
+
+KERNEL_MORPH_FUNC(Ripple, Wave)
+KERNEL_MORPH_FUNC(Ripple, MultiWave)
+KERNEL_MORPH_FUNC(Ripple, Sphere)
+KERNEL_MORPH_FUNC(Ripple, Torus)
+
+KERNEL_MORPH_FUNC(Sphere, Wave)
+KERNEL_MORPH_FUNC(Sphere, MultiWave)
+KERNEL_MORPH_FUNC(Sphere, Ripple)
+KERNEL_MORPH_FUNC(Sphere, Torus)
+
+KERNEL_MORPH_FUNC(Torus, Wave)
+KERNEL_MORPH_FUNC(Torus, MultiWave)
+KERNEL_MORPH_FUNC(Torus, Ripple)
+KERNEL_MORPH_FUNC(Torus, Sphere)
